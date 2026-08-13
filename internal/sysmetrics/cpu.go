@@ -23,6 +23,10 @@ type CPUStats struct {
 	GuestNice uint64
 }
 
+type CPUMeasurement struct {
+	UsagePercent float64
+}
+
 // Total returns the sum of all counters, i.e. all CPU time accounted for since boot.
 func (c CPUStats) Total() uint64 {
 	return c.User + c.Nice + c.System + c.Idle + c.IOWait + c.IRQ + c.SoftIRQ + c.Steal
@@ -88,25 +92,25 @@ func ReadCPUStats() (CPUStats, error) {
 
 // UsagePercent samples /proc/stat twice, separated by interval, and returns the
 // percentage of CPU time spent doing work (i.e. 100 - idle%) over that window.
-func UsagePercent(interval time.Duration) (float64, error) {
+func UsagePercent(interval time.Duration) (CPUMeasurement, error) {
 	first, err := ReadCPUStats()
 	if err != nil {
-		return 0, err
+		return CPUMeasurement{}, err
 	}
 
 	time.Sleep(interval)
 
 	second, err := ReadCPUStats()
 	if err != nil {
-		return 0, err
+		return CPUMeasurement{}, err
 	}
 
 	totalDelta := second.Total() - first.Total()
 	idleDelta := second.IdleTotal() - first.IdleTotal()
 	if totalDelta == 0 {
-		return 0, nil
+		return CPUMeasurement{UsagePercent: 0}, nil
 	}
 
 	usage := (float64(totalDelta-idleDelta) / float64(totalDelta)) * 100
-	return usage, nil
+	return CPUMeasurement{UsagePercent: usage}, nil
 }
