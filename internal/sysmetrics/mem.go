@@ -19,6 +19,27 @@ type MemStats struct {
 	SwapFree  uint64
 }
 
+type MemMeasurement struct {
+	UsedPercent     float64
+	SwapUsedPercent float64
+	UsedBytes       uint64
+	TotalBytes      uint64
+}
+
+// MemUsage reads /proc/meminfo and returns the derived usage measurement.
+func MemUsage() (MemMeasurement, error) {
+	stats, err := ReadMemStats()
+	if err != nil {
+		return MemMeasurement{}, err
+	}
+	return MemMeasurement{
+		UsedPercent:     stats.UsedPercent(),
+		SwapUsedPercent: stats.SwapUsedPercent(),
+		UsedBytes:       (stats.Total - stats.Available) * 1024,
+		TotalBytes:      stats.Total * 1024,
+	}, nil
+}
+
 // UsedPercent uses MemAvailable (the kernel's estimate of memory reclaimable
 // for new allocations) rather than MemFree, which undercounts reclaimable cache.
 func (m MemStats) UsedPercent() float64 {
