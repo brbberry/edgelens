@@ -17,6 +17,12 @@ type NetIOStats struct {
 	BytesSent uint64
 }
 
+// NetIOMeasurement holds network throughput in bytes/sec.
+type NetIOMeasurement struct {
+	RecvBps float64
+	SentBps float64
+}
+
 // ReadNetIOStats reads /proc/net/dev and returns counters for the named
 // interface (e.g. "eth0", "wlan0").
 func ReadNetIOStats(iface string) (NetIOStats, error) {
@@ -81,4 +87,29 @@ func ThroughputBps(iface string, interval time.Duration) (recvBps, sentBps float
 	recvBps = float64(second.BytesRecv-first.BytesRecv) / seconds
 	sentBps = float64(second.BytesSent-first.BytesSent) / seconds
 	return recvBps, sentBps, nil
+}
+
+// NetIOThroughput samples an interface's counters twice, separated by
+// interval, and returns the average receive/send throughput in bytes/sec.
+func NetIOThroughput(iface string, interval time.Duration) (NetIOMeasurement, error) {
+	first, err := ReadNetIOStats(iface)
+	if err != nil {
+		return NetIOMeasurement{}, err
+	}
+
+	time.Sleep(interval)
+
+	second, err := ReadNetIOStats(iface)
+	if err != nil {
+		return NetIOMeasurement{}, err
+	}
+
+	seconds := interval.Seconds()
+	if seconds == 0 {
+		return NetIOMeasurement{}, nil
+	}
+	return NetIOMeasurement{
+		RecvBps: float64(second.BytesRecv-first.BytesRecv) / seconds,
+		SentBps: float64(second.BytesSent-first.BytesSent) / seconds,
+	}, nil
 }
