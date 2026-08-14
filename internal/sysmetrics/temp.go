@@ -18,13 +18,12 @@ type TempZone struct {
 // ReadTemps reads every /sys/class/thermal/thermal_zone*/temp file and
 // returns the parsed temperatures. Zones that error while reading are
 // skipped, since not every zone is populated on every board.
-func ReadTemps() ([]TempZone, error) {
+func ReadTemps() (TempZone, error) {
 	paths, err := filepath.Glob("/sys/class/thermal/thermal_zone*")
 	if err != nil {
-		return nil, fmt.Errorf("globbing thermal zones: %w", err)
+		return TempZone{}, fmt.Errorf("globbing thermal zones: %w", err)
 	}
 
-	var zones []TempZone
 	for _, zonePath := range paths {
 		rawMilliC, err := os.ReadFile(filepath.Join(zonePath, "temp"))
 		if err != nil {
@@ -40,12 +39,12 @@ func ReadTemps() ([]TempZone, error) {
 			typeLabel = []byte("unknown")
 		}
 
-		zones = append(zones, TempZone{
+		return TempZone{
 			Zone: filepath.Base(zonePath),
 			Type: strings.TrimSpace(string(typeLabel)),
 			// the kernel reports temp in millidegrees Celsius
 			Celsius: float64(milliC) / 1000,
-		})
+		}, nil
 	}
-	return zones, nil
+	return TempZone{}, fmt.Errorf("no thermal zones found")
 }

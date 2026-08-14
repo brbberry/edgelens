@@ -9,7 +9,7 @@ type SystemSnapshot struct {
 	Memory      sysmetrics.MemMeasurement
 	Disk        sysmetrics.DiskMeasurement
 	Network     sysmetrics.NetIOMeasurement
-	Temperature []sysmetrics.TempZone
+	Temperature sysmetrics.TempZone
 }
 
 func GatherSystemSnapshot(samplingConfig SamplingConfig, targetConfig TargetConfig) (SystemSnapshot, error) {
@@ -33,7 +33,7 @@ func GatherSystemSnapshot(samplingConfig SamplingConfig, targetConfig TargetConf
 		return SystemSnapshot{}, err
 	}
 
-	temps, err := sysmetrics.ReadTemps()
+	temp, err := sysmetrics.ReadTemps()
 	if err != nil {
 		return SystemSnapshot{}, err
 	}
@@ -43,6 +43,6 @@ func GatherSystemSnapshot(samplingConfig SamplingConfig, targetConfig TargetConf
 		Memory:      mem,
 		Disk:        disk,
 		Network:     net,
-		Temperature: temps,
+		Temperature: temp,
 	}, nil
 }

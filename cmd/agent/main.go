@@ -1,48 +1,43 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"time"
 
-	"github.com/brbberry/edgelens/internal/sysmetrics"
+	"github.com/brbberry/edgelens/internal/metricagg"
+	"github.com/brbberry/edgelens/internal/wire"
 )
-
-type SystemMetrics struct {
-	CPU         sysmetrics.CPUStats
-	Memory      sysmetrics.MemStats
-	Network     sysmetrics.NetIOStats
-	Temperature []sysmetrics.TempZone
-}
 
 func main() {
 
-	curRead := SystemMetrics{}
-	cpuStats, err := sysmetrics.ReadCPUStats()
+	samplingConfig := metricagg.DefaultSamplingConfig()
+	targetConfig := metricagg.DefaultTargetConfig()
+
+	agg, err := metricagg.GatherSystemSnapshot(samplingConfig, targetConfig)
 	if err != nil {
-		fmt.Println("Error reading CPU stats:", err)
+		fmt.Println("Error gathering system snapshot:", err)
 		return
 	}
-	curRead.CPU = cpuStats
 
-	memStats, err := sysmetrics.ReadMemStats()
+	host, err := os.Hostname()
 	if err != nil {
-		fmt.Println("Error reading memory stats:", err)
+		host = "unknown"
+	}
+
+	m := wire.FromSnapshot(agg, host, time.Now().Unix())
+
+	b, err := json.Marshal(m)
+
+	fmt.Printf("System Snapshot: %+v\n", agg)
+
+	// TEMPORARY: Step 1 sizing probe. Delete once measured.
+	if err != nil {
+		fmt.Println("marshal error:", err)
 		return
 	}
-	curRead.Memory = memStats
-
-	netStats, err := sysmetrics.ReadNetIOStats("eth0")
-	if err != nil {
-		fmt.Println("Error reading network stats:", err)
-		return
-	}
-	curRead.Network = netStats
-
-	tempZones, err := sysmetrics.ReadTemps()
-	if err != nil {
-		fmt.Println("Error reading temperature zones:", err)
-		return
-	}
-	curRead.Temperature = tempZones
-
-	fmt.Printf("Current System Metrics: %+v\n", curRead)
+	fmt.Println("--- sizing probe ---")
+	fmt.Println("payload bytes:", len(b))
+	fmt.Println(string(b))
 }
