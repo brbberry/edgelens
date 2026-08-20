@@ -30,14 +30,13 @@ func main() {
 
 	b, err := json.Marshal(m)
 
-	fmt.Printf("System Snapshot: %+v\n", agg)
+	fmt.Printf("System Snapshot: %+v\n", b)
 
-	// TEMPORARY: Step 1 sizing probe. Delete once measured.
 	if err != nil {
 		fmt.Println("marshal error:", err)
 		return
 	}
-	fmt.Println("--- sizing probe ---")
-	fmt.Println("payload bytes:", len(b))
-	fmt.Println(string(b))
+	// fmt.Println("--- sizing probe ---")
+	// fmt.Println("payload bytes:", len(b))
+	// fmt.Println(string(b))
 }
