@@ -86,6 +86,67 @@ ON CONFLICT (host, timestamp) DO NOTHING`,
 	return nil
 }
 
+// ReadMeasurements returns up to limit of the newest measurements ordered by
+// timestamp so callers can render them as a time series.
+func (s *DB) ReadMeasurements(ctx context.Context, limit int) ([]wire.Measurement, error) {
+	if limit <= 0 {
+		return nil, fmt.Errorf("measurement limit must be positive")
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+SELECT
+	version, host, timestamp, cpu_usage_pct,
+	mem_used_pct, mem_used_bytes, mem_total_bytes, swap_used_pct,
+	disk_usage_pct, disk_read_bps, disk_write_bps,
+	net_recv_bps, net_sent_bps, temp_zone, temp_type, temp_celsius
+FROM (
+	SELECT
+		version, host, timestamp, cpu_usage_pct,
+		mem_used_pct, mem_used_bytes, mem_total_bytes, swap_used_pct,
+		disk_usage_pct, disk_read_bps, disk_write_bps,
+		net_recv_bps, net_sent_bps, temp_zone, temp_type, temp_celsius
+	FROM measurements
+	ORDER BY timestamp DESC
+	LIMIT ?
+)
+ORDER BY timestamp ASC`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("read measurements: %w", err)
+	}
+	defer rows.Close()
+
+	measurements := make([]wire.Measurement, 0, limit)
+	for rows.Next() {
+		var measurement wire.Measurement
+		if err := rows.Scan(
+			&measurement.Version,
+			&measurement.Host,
+			&measurement.Timestamp,
+			&measurement.CPUUsagePct,
+			&measurement.MemUsedPct,
+			&measurement.MemUsedBytes,
+			&measurement.MemTotalBytes,
+			&measurement.SwapUsedPct,
+			&measurement.DiskUsagePct,
+			&measurement.DiskReadBps,
+			&measurement.DiskWriteBps,
+			&measurement.NetRecvBps,
+			&measurement.NetSentBps,
+			&measurement.TempZone,
+			&measurement.TempType,
+			&measurement.TempCelsius,
+		); err != nil {
+			return nil, fmt.Errorf("scan measurement: %w", err)
+		}
+		measurements = append(measurements, measurement)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate measurements: %w", err)
+	}
+
+	return measurements, nil
+}
+
 // Close releases the database connection.
 func (s *DB) Close() error {
 	return s.db.Close()

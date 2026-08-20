@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EdgeLens</title>
+  <style>
+    :root { --ink: #17242b; --muted: #617078; --paper: #f5f3ed; --panel: #fffefa; --line: #d6d9d3; --teal: #007a78; --orange: #e56b2f; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: linear-gradient(135deg, #f5f3ed 0%, #eef4f0 100%); font-family: "Avenir Next", "Helvetica Neue", sans-serif; }
+    header, main { width: min(1440px, calc(100% - 32px)); margin: 0 auto; }
+    header { display: flex; align-items: end; justify-content: space-between; gap: 20px; padding: 42px 0 28px; border-bottom: 1px solid var(--line); }
+    h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: 0; }
+    .subtitle { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+    .controls { display: flex; align-items: center; gap: 10px; }
+    label { color: var(--muted); font-size: 13px; font-weight: 600; }
+    select { min-width: 150px; border: 1px solid var(--line); border-radius: 5px; padding: 8px 10px; color: var(--ink); background: var(--panel); font: inherit; }
+    main { padding: 24px 0 44px; }
+    .status { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+    .chart { min-height: 224px; border: 1px solid var(--line); border-radius: 6px; padding: 16px; background: var(--panel); box-shadow: 0 1px 0 rgb(23 36 43 / 4%); }
+    .chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    h2 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: 0; }
+    .value { color: var(--teal); font-family: ui-monospace, "SFMono-Regular", monospace; font-size: 13px; font-weight: 650; white-space: nowrap; }
+    svg { display: block; width: 100%; height: 156px; margin-top: 14px; overflow: visible; }
+    .grid-line { stroke: #e5e6e0; stroke-width: 1; }
+    .axis-line { stroke: #9aa6a5; stroke-width: 1; }
+    .trend { fill: none; stroke: var(--teal); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .axis-label { fill: var(--muted); font-family: ui-monospace, "SFMono-Regular", monospace; font-size: 10px; }
+    .empty { grid-column: 1 / -1; padding: 52px 18px; border: 1px dashed var(--line); color: var(--muted); text-align: center; }
+    @media (max-width: 600px) { header { align-items: start; flex-direction: column; padding-top: 26px; } h1 { font-size: 29px; } .controls { width: 100%; justify-content: space-between; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>EdgeLens</h1><p class="subtitle">System telemetry, read directly from collector storage.</p></div>
+    <div class="controls"><label for="host">Host</label><select id="host" aria-label="Select host"></select></div>
+  </header>
+  <main><p id="status" class="status">Loading measurements...</p><section id="charts" class="grid" aria-live="polite"></section></main>
+  <script>
+    const metrics = [
+      ["cpu_pct", "CPU usage", "%"], ["mem_used_pct", "Memory usage", "%"], ["mem_used_b", "Memory used", "B"],
+      ["mem_total_b", "Memory total", "B"], ["swap_used_pct", "Swap usage", "%"], ["disk_used_pct", "Disk usage", "%"],
+      ["disk_read_bps", "Disk read", "B/s"], ["disk_write_bps", "Disk write", "B/s"], ["net_recv_bps", "Network received", "B/s"],
+      ["net_sent_bps", "Network sent", "B/s"], ["temp_c", "Temperature", "C"]
+    ];
+    const hostSelect = document.querySelector("#host");
+    const chartGrid = document.querySelector("#charts");
+    const status = document.querySelector("#status");
+    let measurements = [];
+
+    function format(value, unit) {
+      if (unit === "B" || unit === "B/s") {
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let index = 0;
+        while (Math.abs(value) >= 1024 && index < units.length - 1) { value /= 1024; index++; }
+        return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[index]}${unit === "B/s" ? "/s" : ""}`;
+      }
+      return `${value.toFixed(1)}${unit === "%" ? "%" : " C"}`;
+    }
+
+    function chart(metric, records) {
+      const [field, label, unit] = metric;
+      const values = records.map(record => Number(record[field]));
+      const minimum = Math.min(...values);
+      const maximum = Math.max(...values);
+      const padding = (maximum - minimum) * 0.1 || Math.max(Math.abs(maximum) * 0.1, 1);
+      const low = minimum - padding;
+      const high = maximum + padding;
+      const range = high - low;
+      const width = 300, height = 156, left = 46, right = 8, top = 12, bottom = 28;
+      const firstTimestamp = records[0].ts;
+      const lastTimestamp = records.at(-1).ts;
+      const timeRange = lastTimestamp - firstTimestamp;
+      const plotHeight = height - top - bottom;
+      const plotWidth = width - left - right;
+      const points = records.map((record, index) => {
+        const value = values[index];
+        const x = left + plotWidth * (timeRange ? (record.ts - firstTimestamp) / timeRange : .5);
+        const y = top + (height - top - bottom) * (1 - (value - low) / range);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(" ");
+      const firstTime = new Date(firstTimestamp * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const lastTime = new Date(lastTimestamp * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const middleY = top + plotHeight / 2;
+      const bottomY = height - bottom;
+      return `<article class="chart"><div class="chart-head"><h2>${label}</h2><span class="value">${format(values.at(-1), unit)}</span></div><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${label} trend"><line class="grid-line" x1="${left}" y1="${top}" x2="${width - right}" y2="${top}"/><line class="grid-line" x1="${left}" y1="${middleY}" x2="${width - right}" y2="${middleY}"/><line class="grid-line" x1="${left}" y1="${bottomY}" x2="${width - right}" y2="${bottomY}"/><line class="axis-line" x1="${left}" y1="${top}" x2="${left}" y2="${bottomY}"/><line class="axis-line" x1="${left}" y1="${bottomY}" x2="${width - right}" y2="${bottomY}"/><polyline class="trend" points="${points}"/><text class="axis-label" x="${left - 5}" y="${top + 3}" text-anchor="end">${format(high, unit)}</text><text class="axis-label" x="${left - 5}" y="${middleY + 3}" text-anchor="end">${format((low + high) / 2, unit)}</text><text class="axis-label" x="${left - 5}" y="${bottomY + 3}" text-anchor="end">${format(low, unit)}</text><text class="axis-label" x="${left}" y="${height - 5}">${firstTime}</text><text class="axis-label" x="${width - right}" y="${height - 5}" text-anchor="end">${lastTime}</text></svg></article>`;
+    }
+
+    function render() {
+      const records = measurements.filter(record => record.host === hostSelect.value);
+      if (!records.length) { chartGrid.innerHTML = '<div class="empty">No measurements available for this host yet.</div>'; return; }
+      chartGrid.innerHTML = metrics.map(metric => chart(metric, records)).join("");
+      const latest = records.at(-1);
+      status.textContent = `${records.length} samples from ${latest.host} through ${new Date(latest.ts * 1000).toLocaleString()}.`;
+    }
+
+    function populateHosts(hosts) {
+      hostSelect.replaceChildren(...hosts.map(host => {
+        const option = document.createElement("option");
+        option.value = host;
+        option.textContent = host;
+        return option;
+      }));
+    }
+
+    async function load() {
+      try {
+        const response = await fetch("/api/measurements?limit=720");
+        if (!response.ok) throw new Error("Unable to load measurements");
+        measurements = await response.json();
+        const hosts = [...new Set(measurements.map(record => record.host))];
+        populateHosts(hosts);
+        hostSelect.addEventListener("change", render);
+        render();
+      } catch (error) { status.textContent = error.message; chartGrid.innerHTML = '<div class="empty">The dashboard could not load telemetry.</div>'; }
+    }
+    load();
+  </script>
+</body>
+</html>

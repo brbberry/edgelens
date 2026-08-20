@@ -56,3 +56,33 @@ FROM measurements
 		t.Fatalf("measurement row count = %d, want 1", count)
 	}
 }
+
+func TestReadMeasurements(t *testing.T) {
+	database, err := Open(filepath.Join(t.TempDir(), "measurements.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	for _, measurement := range []wire.Measurement{
+		{Version: wire.Version, Host: "edge-01", Timestamp: 300},
+		{Version: wire.Version, Host: "edge-01", Timestamp: 100},
+		{Version: wire.Version, Host: "edge-01", Timestamp: 200},
+	} {
+		if err := database.WriteMeasurement(context.Background(), measurement); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	measurements, err := database.ReadMeasurements(context.Background(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(measurements) != 2 {
+		t.Fatalf("measurement count = %d, want 2", len(measurements))
+	}
+	if measurements[0].Timestamp != 200 || measurements[1].Timestamp != 300 {
+		t.Fatalf("timestamps = %d, %d; want 200, 300", measurements[0].Timestamp, measurements[1].Timestamp)
+	}
+}
