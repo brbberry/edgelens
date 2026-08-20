@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"fmt"
 	"net"
 )
 
@@ -23,8 +24,14 @@ func NewUDPSender(address string) (*UDPSender, error) {
 }
 
 func (s *UDPSender) Send(payload []byte) error {
-	_, err := s.conn.Write(payload)
-	return err
+	written, err := s.conn.Write(payload)
+	if err != nil {
+		return err
+	}
+	if written != len(payload) {
+		return fmt.Errorf("short UDP write: wrote %d of %d bytes", written, len(payload))
+	}
+	return nil
 }
 
 func (s *UDPSender) Close() error {
