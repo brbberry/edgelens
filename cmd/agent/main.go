@@ -1,13 +1,11 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/brbberry/edgelens/internal/metricagg"
-	"github.com/brbberry/edgelens/internal/store"
+	"github.com/brbberry/edgelens/internal/transport"
 	"github.com/brbberry/edgelens/internal/wire"
 )
 
@@ -21,25 +19,20 @@ func main() {
 		fmt.Println("Error gathering system snapshot:", err)
 		return
 	}
-
-	host, err := os.Hostname()
+	host_str := "edge-01"
+	time_stamp := time.Now().Unix()
+	raw_converted_message := wire.FromSnapshot(agg, host_str, time_stamp)
+	dest_str := ""
+	chunnel, err := transport.NewUDPSender(dest_str)
 	if err != nil {
-		host = "unknown"
-	}
-
-	m := wire.FromSnapshot(agg, host, time.Now().Unix())
-
-	database, err := store.Open("edgelens.db")
-	if err != nil {
-		fmt.Println("database error:", err)
+		fmt.Println("Error creating UDP sender:", err)
 		return
 	}
-	defer database.Close()
-
-	if err := database.WriteMeasurement(context.Background(), m); err != nil {
-		fmt.Println("write error:", err)
+	defer chunnel.Close()
+	err = chunnel.Send(raw_converted_message)
+	if err != nil {
+		fmt.Println("Error sending message:", err)
 		return
 	}
 
-	fmt.Println("stored system measurement for", host)
 }
