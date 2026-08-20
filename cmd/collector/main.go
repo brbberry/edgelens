@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 
 	"github.com/brbberry/edgelens/internal/store"
@@ -10,22 +11,24 @@ import (
 )
 
 func main() {
-	// later make the database path configurable via command line flags or environment variables
-	database, err := store.Open("measurements.db")
+	databasePath := flag.String("database", "measurements.db", "path to the SQLite measurements database")
+	udpAddress := flag.String("udp-address", ":9000", "UDP listen address for agent measurements")
+	flag.Parse()
+
+	database, err := store.Open(*databasePath)
 	if err != nil {
 		fmt.Println("database error:", err)
 		return
 	}
 	defer database.Close()
 
-	// later make the UDP port configurable via command line flags or environment variables
-	receiver, err := transport.NewUDPReceiver(":9000")
+	receiver, err := transport.NewUDPReceiver(*udpAddress)
 	if err != nil {
 		fmt.Println("receiver error:", err)
 		return
 	}
 	defer receiver.Close()
-	fmt.Println("collector listening on UDP port 9000")
+	fmt.Printf("collector listening for UDP measurements on %s\n", *udpAddress)
 
 	buffer := make([]byte, 64*1024)
 	decoder := codec.JSONCodec{}
