@@ -1,12 +1,13 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/brbberry/edgelens/internal/metricagg"
+	"github.com/brbberry/edgelens/internal/store"
 	"github.com/brbberry/edgelens/internal/wire"
 )
 
@@ -28,16 +29,17 @@ func main() {
 
 	m := wire.FromSnapshot(agg, host, time.Now().Unix())
 
-	b, err := json.Marshal(m)
-
-	fmt.Printf("System Snapshot: %+v\n", agg)
-
-	// TEMPORARY: Step 1 sizing probe. Delete once measured.
+	database, err := store.Open("edgelens.db")
 	if err != nil {
-		fmt.Println("marshal error:", err)
+		fmt.Println("database error:", err)
 		return
 	}
-	fmt.Println("--- sizing probe ---")
-	fmt.Println("payload bytes:", len(b))
-	fmt.Println(string(b))
+	defer database.Close()
+
+	if err := database.WriteMeasurement(context.Background(), m); err != nil {
+		fmt.Println("write error:", err)
+		return
+	}
+
+	fmt.Println("stored system measurement for", host)
 }
