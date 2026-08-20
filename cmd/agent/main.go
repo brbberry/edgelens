@@ -2,47 +2,50 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"time"
 
-	"github.com/brbberry/edgelens/internal/sysmetrics"
+	"github.com/brbberry/edgelens/internal/metricagg"
+	"github.com/brbberry/edgelens/internal/transport"
+	"github.com/brbberry/edgelens/internal/transport/codec"
+	"github.com/brbberry/edgelens/internal/wire"
 )
-
-type SystemMetrics struct {
-	CPU         sysmetrics.CPUStats
-	Memory      sysmetrics.MemStats
-	Network     sysmetrics.NetIOStats
-	Temperature []sysmetrics.TempZone
-}
 
 func main() {
 
-	curRead := SystemMetrics{}
-	cpuStats, err := sysmetrics.ReadCPUStats()
+	samplingConfig := metricagg.DefaultSamplingConfig()
+	targetConfig := metricagg.DefaultTargetConfig()
+
+	host, err := os.Hostname()
 	if err != nil {
-		fmt.Println("Error reading CPU stats:", err)
+		fmt.Println("Error getting hostname:", err)
 		return
 	}
-	curRead.CPU = cpuStats
-
-	memStats, err := sysmetrics.ReadMemStats()
+	destination := "Blakes-MacBook-Pro.local:9000"
+	sender, err := transport.NewUDPSender(destination)
 	if err != nil {
-		fmt.Println("Error reading memory stats:", err)
+		fmt.Println("Error creating UDP sender:", err)
 		return
 	}
-	curRead.Memory = memStats
+	defer sender.Close()
+	encoder := codec.JSONCodec{}
+	for {
+		agg, err := metricagg.GatherSystemSnapshot(samplingConfig, targetConfig)
+		if err != nil {
+			fmt.Println("Error gathering system snapshot:", err)
+			continue
+		}
+		timestamp := time.Now().Unix()
 
-	netStats, err := sysmetrics.ReadNetIOStats("eth0")
-	if err != nil {
-		fmt.Println("Error reading network stats:", err)
-		return
+		message := wire.FromSnapshot(agg, host, timestamp)
+		payload, err := encoder.Encode(message)
+		if err != nil {
+			fmt.Println("Error marshalling message:", err)
+			continue
+		}
+		if err := sender.Send(payload); err != nil {
+			fmt.Println("Error sending message:", err)
+			continue
+		}
 	}
-	curRead.Network = netStats
-
-	tempZones, err := sysmetrics.ReadTemps()
-	if err != nil {
-		fmt.Println("Error reading temperature zones:", err)
-		return
-	}
-	curRead.Temperature = tempZones
-
-	fmt.Printf("Current System Metrics: %+v\n", curRead)
 }

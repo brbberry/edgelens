@@ -26,7 +26,7 @@ func DefaultSamplingConfig() SamplingConfig {
 
 func DefaultTargetConfig() TargetConfig {
 	return TargetConfig{
-		DiskDevice:       "/dev/sda",
+		DiskDevice:       "mmcblk0",
 		DiskMountPath:    "/",
 		NetworkInterface: "eth0",
 	}
