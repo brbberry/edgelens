@@ -92,6 +92,7 @@ func ThroughputBps(iface string, interval time.Duration) (recvBps, sentBps float
 // NetIOThroughput samples an interface's counters twice, separated by
 // interval, and returns the average receive/send throughput in bytes/sec.
 func NetIOThroughput(iface string, interval time.Duration) (NetIOMeasurement, error) {
+	startedAt := time.Now()
 	first, err := ReadNetIOStats(iface)
 	if err != nil {
 		return NetIOMeasurement{}, err
@@ -104,8 +105,8 @@ func NetIOThroughput(iface string, interval time.Duration) (NetIOMeasurement, er
 		return NetIOMeasurement{}, err
 	}
 
-	seconds := interval.Seconds()
-	if seconds == 0 {
+	seconds := time.Since(startedAt).Seconds()
+	if seconds <= 0 {
 		return NetIOMeasurement{}, nil
 	}
 	return NetIOMeasurement{

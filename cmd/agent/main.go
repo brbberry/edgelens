@@ -13,24 +13,23 @@ import (
 )
 
 func main() {
-	samplingConfig := metricagg.DefaultSamplingConfig()
-	targetConfig := metricagg.DefaultTargetConfig()
+	sources := metricagg.DefaultMetricSources()
 
 	destination := flag.String("collector", "127.0.0.1:9000", "UDP address of the collector")
 	hostOverride := flag.String("host", "", "host identity to include in measurements (defaults to the system hostname)")
-	reportDelay := flag.Duration("report-delay", 5*time.Second, "delay after sending a measurement before gathering the next one")
-	diskDevice := flag.String("disk-device", targetConfig.DiskDevice, "disk device to measure")
-	diskMountPath := flag.String("disk-mount", targetConfig.DiskMountPath, "mount path whose disk usage to measure")
-	networkInterface := flag.String("network-interface", targetConfig.NetworkInterface, "network interface to measure")
+	reportInterval := flag.Duration("report-interval", metricagg.DefaultReportInterval, "interval covered by each rate measurement and between reports")
+	diskDevice := flag.String("disk-device", sources.DiskDevice, "disk device to measure")
+	diskMountPath := flag.String("disk-mount", sources.DiskMountPath, "mount path whose disk usage to measure")
+	networkInterface := flag.String("network-interface", sources.NetworkInterface, "network interface to measure")
 	flag.Parse()
 
-	if *reportDelay <= 0 {
-		fmt.Println("report-delay must be positive")
+	if *reportInterval < metricagg.MinimumReportInterval {
+		fmt.Printf("report-interval must be at least %s\n", metricagg.MinimumReportInterval)
 		return
 	}
-	targetConfig.DiskDevice = *diskDevice
-	targetConfig.DiskMountPath = *diskMountPath
-	targetConfig.NetworkInterface = *networkInterface
+	sources.DiskDevice = *diskDevice
+	sources.DiskMountPath = *diskMountPath
+	sources.NetworkInterface = *networkInterface
 
 	host := *hostOverride
 	if host == "" {
@@ -49,10 +48,11 @@ func main() {
 	}
 	defer sender.Close()
 
-	fmt.Printf("sending measurements from %s to %s with a %s reporting delay\n", host, *destination, *reportDelay)
+	fmt.Printf("sending measurements from %s to %s every %s\n", host, *destination, *reportInterval)
 	encoder := codec.JSONCodec{}
 	for {
-		agg, err := metricagg.GatherSystemSnapshot(samplingConfig, targetConfig)
+		cycleStartedAt := time.Now()
+		agg, err := metricagg.GatherSystemSnapshot(*reportInterval, sources)
 		if err != nil {
 			fmt.Println("gather system snapshot:", err)
 		} else {
@@ -65,6 +65,8 @@ func main() {
 			}
 		}
 
-		time.Sleep(*reportDelay)
+		if delay := time.Until(cycleStartedAt.Add(*reportInterval)); delay > 0 {
+			time.Sleep(delay)
+		}
 	}
 }

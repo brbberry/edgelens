@@ -107,6 +107,7 @@ func ReadDiskIOStats(device string) (DiskIOStats, error) {
 // DiskIOThroughput samples a device's counters twice, separated by interval,
 // and returns average read/write throughput in bytes/sec.
 func DiskIOThroughput(device string, interval time.Duration) (DiskIOMeasurement, error) {
+	startedAt := time.Now()
 	first, err := ReadDiskIOStats(device)
 	if err != nil {
 		return DiskIOMeasurement{}, err
@@ -117,8 +118,8 @@ func DiskIOThroughput(device string, interval time.Duration) (DiskIOMeasurement,
 		return DiskIOMeasurement{}, err
 	}
 
-	seconds := interval.Seconds()
-	if seconds == 0 {
+	seconds := time.Since(startedAt).Seconds()
+	if seconds <= 0 {
 		return DiskIOMeasurement{}, nil
 	}
 
@@ -131,11 +132,11 @@ func DiskIOThroughput(device string, interval time.Duration) (DiskIOMeasurement,
 }
 
 func ReadDiskMetrics(device, mountPath string, interval time.Duration) (DiskMeasurement, error) {
-	space, err := ReadDiskSpace(mountPath)
+	io, err := DiskIOThroughput(device, interval)
 	if err != nil {
 		return DiskMeasurement{}, err
 	}
-	io, err := DiskIOThroughput(device, interval)
+	space, err := ReadDiskSpace(mountPath)
 	if err != nil {
 		return DiskMeasurement{}, err
 	}

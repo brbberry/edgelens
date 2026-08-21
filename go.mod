@@ -2,7 +2,10 @@ module github.com/brbberry/edgelens
 
 go 1.26.5
 
-require modernc.org/sqlite v1.57.0
+require (
+	golang.org/x/sync v0.22.0
+	modernc.org/sqlite v1.57.0
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect

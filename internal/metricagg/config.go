@@ -2,30 +2,21 @@ package metricagg
 
 import "time"
 
-type SamplingConfig struct {
-	CPUInterval     time.Duration
-	DiskInterval    time.Duration
-	NetworkInterval time.Duration
-	TempInterval    time.Duration
-}
-
-type TargetConfig struct {
+// MetricSources identifies the operating-system sources used for disk and
+// network measurements. It is independent of the report cadence.
+type MetricSources struct {
 	DiskDevice       string
 	DiskMountPath    string
 	NetworkInterface string
 }
 
-func DefaultSamplingConfig() SamplingConfig {
-	return SamplingConfig{
-		CPUInterval:     1 * time.Second,
-		DiskInterval:    1 * time.Second,
-		NetworkInterval: 1 * time.Second,
-		TempInterval:    0 * time.Second, // not used yet, but could be used for future sampling of temperature readings
-	}
-}
+const (
+	MinimumReportInterval = time.Second
+	DefaultReportInterval = 5 * time.Second
+)
 
-func DefaultTargetConfig() TargetConfig {
-	return TargetConfig{
+func DefaultMetricSources() MetricSources {
+	return MetricSources{
 		DiskDevice:       "mmcblk0",
 		DiskMountPath:    "/",
 		NetworkInterface: "eth0",
