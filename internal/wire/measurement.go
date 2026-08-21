@@ -8,9 +8,10 @@ const Version = 1
 // Measurement is the contract between agent and collector.
 // Changing a json tag here is a protocol change — treat it as such.
 type Measurement struct {
-	Version   int    `json:"v"`
-	Host      string `json:"host"`
-	Timestamp int64  `json:"ts"` // unix seconds, UTC
+	Version int    `json:"v"`
+	Host    string `json:"host"`
+	// Timestamp is the UTC Unix second marking the end of the rate-observation window.
+	Timestamp int64 `json:"ts"`
 
 	CPUUsagePct float64 `json:"cpu_pct"`
 
@@ -36,13 +37,13 @@ type Measurement struct {
 // mapping lives here, so a refactor of SystemSnapshot fails to compile here
 // rather than silently changing the protocol.
 //
-// host and ts are passed in rather than read here so that this package stays
-// pure: no syscalls, no clock, trivially testable.
-func FromSnapshot(s metricagg.SystemSnapshot, host string, ts int64) Measurement {
+// host and reportTime are passed in rather than read here so that this package
+// stays pure: no syscalls, no clock, trivially testable.
+func FromSnapshot(s metricagg.SystemSnapshot, host string, reportTime int64) Measurement {
 	return Measurement{
 		Version:   Version,
 		Host:      host,
-		Timestamp: ts,
+		Timestamp: reportTime,
 
 		CPUUsagePct: s.CPU.UsagePercent,
 

@@ -64,7 +64,7 @@ go run ./cmd/agent \
   -disk-device mmcblk0 \
   -disk-mount / \
   -network-interface eth0 \
-  -report-delay 5s
+  -report-interval 5s
 ```
 
 To view the dashboard from another trusted device on the LAN, bind it to all network interfaces:
@@ -87,20 +87,20 @@ Run `go run ./cmd/<command> -h` to see available flags.
 |---|---|---|
 | `-collector` | UDP destination as `host:port` | `127.0.0.1:9000` |
 | `-host` | Logical identity stored with each measurement | OS hostname |
-| `-report-delay` | Delay after completing and sending one snapshot before gathering the next | `5s` |
+| `-report-interval` | Interval covered by each CPU, disk I/O, and network I/O rate measurement; one report is sent per interval (minimum `1s`) | `5s` |
 | `-disk-device` | Linux block device used for disk I/O rates | `mmcblk0` |
 | `-disk-mount` | Mounted filesystem used for disk usage | `/` |
 | `-network-interface` | Linux network interface used for network rates | `eth0` |
 
 Use `ip link` to list network interfaces and `lsblk` to list block devices. Common alternative names include `wlan0`, `enp0s3`, and `nvme0n1`.
 
-`-report-delay` is separate from the metric sampling configuration. CPU, disk I/O, and network I/O each observe their OS counters over the one-second windows in `DefaultSamplingConfig`. Those operations currently run sequentially, so a sent record arrives approximately every:
+`-report-interval` is the agent's single timing control. CPU, disk I/O, and network I/O observe their OS counters over that full interval while running concurrently. Once the interval completes, the agent sends one record and immediately begins the next observation window. A sent record arrives approximately every:
 
 $$
-T_{record} \approx T_{CPU\ sample} + T_{disk\ sample} + T_{network\ sample} + T_{report\ delay}
+T_{record} \approx T_{report\ interval}
 $$
 
-With the defaults, that is roughly $1s + 1s + 1s + 5s = 8s$.
+With the default, the agent sends approximately one record every $5s$. Each rate in that record represents the complete $5s$ since the previous record, so there are no unmeasured gaps between rate windows.
 
 ### Collector
 
