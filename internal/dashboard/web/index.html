@@ -40,6 +40,22 @@
     .facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-family: ui-monospace, "SFMono-Regular", monospace; font-size: 13px; }
     .evidence { min-width: 0; }
     .evidence h2, .timeline h2 { margin-bottom: 10px; }
+    .perf-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+    .perf-heading h2 { margin-bottom: 0; }
+    .perf-count { color: var(--muted); font-size: 12px; font-weight: 650; }
+    .perf-summary { margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .perf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 9px; margin-bottom: 10px; }
+    .perf-counter { min-width: 0; border: 1px solid var(--line); border-left: 3px solid var(--teal); border-radius: 6px; padding: 12px; background: var(--panel); }
+    .perf-counter.unavailable { border-left-color: #9aa6a5; color: var(--muted); }
+    .perf-counter-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .perf-counter-name { min-width: 0; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+    .perf-scope { flex: none; border: 1px solid #b8cfca; border-radius: 3px; padding: 1px 5px; color: #34645e; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+    .perf-counter-value { display: block; margin-top: 8px; color: var(--ink); font: 700 22px/1.15 ui-monospace, "SFMono-Regular", monospace; }
+    .perf-derived { min-height: 18px; margin-top: 3px; color: var(--teal); font: 650 12px/1.35 ui-monospace, "SFMono-Regular", monospace; }
+    .perf-description { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .perf-raw { margin-bottom: 18px; }
+    .perf-raw summary { width: fit-content; padding: 4px 0; color: var(--muted); font-size: 12px; font-weight: 650; cursor: pointer; }
+    .perf-raw pre { margin: 6px 0 0; }
     pre { max-height: 300px; margin: 0 0 18px; overflow: auto; border: 1px solid var(--line); border-radius: 5px; padding: 12px; background: #152126; color: #e9f1ec; font: 12px/1.5 ui-monospace, "SFMono-Regular", monospace; white-space: pre-wrap; }
     #flame { width: 100%; min-height: 120px; height: auto; margin: 0 0 18px; border: 1px solid var(--line); background: var(--panel); }
     .flame-label { fill: #17242b; font: 10px ui-monospace, "SFMono-Regular", monospace; pointer-events: none; }
@@ -63,7 +79,7 @@
       <div class="run-toolbar"><label for="run-select">Experiment run</label><select id="run-select" aria-label="Select experiment run"></select></div>
       <p id="run-status" class="status">Loading experiments...</p>
       <div id="run-content" hidden>
-        <section class="run-detail"><dl id="run-facts" class="facts"></dl><div class="evidence"><h2>Perf counters</h2><pre id="perf-output">No perf-stat artifact.</pre><h2>Sampled stacks</h2><svg id="flame" role="img" aria-label="CPU flame chart"></svg><h2>Go heap profile summary</h2><pre id="heap-output">No heap profile artifact.</pre></div></section>
+        <section class="run-detail"><dl id="run-facts" class="facts"></dl><div class="evidence"><div class="perf-heading"><h2>Perf counters</h2><span id="perf-count" class="perf-count"></span></div><p id="perf-summary" class="perf-summary">Loading counter evidence...</p><div id="perf-counters" class="perf-grid"></div><details id="perf-raw" class="perf-raw"><summary>View raw perf output</summary><pre id="perf-output">No perf-stat artifact.</pre></details><h2>Sampled stacks</h2><svg id="flame" role="img" aria-label="CPU flame chart"></svg><h2>Go heap profile summary</h2><pre id="heap-output">No heap profile artifact.</pre></div></section>
         <section class="timeline"><h2 class="section-title">Process timeline</h2><div id="process-charts" class="grid"></div></section>
       </div>
     </section>
@@ -83,6 +99,10 @@
     const runContent = document.querySelector("#run-content");
     const runFacts = document.querySelector("#run-facts");
     const processCharts = document.querySelector("#process-charts");
+    const perfCounters = document.querySelector("#perf-counters");
+    const perfCount = document.querySelector("#perf-count");
+    const perfSummary = document.querySelector("#perf-summary");
+    const perfRaw = document.querySelector("#perf-raw");
     const perfOutput = document.querySelector("#perf-output");
     const heapOutput = document.querySelector("#heap-output");
     const flame = document.querySelector("#flame");
@@ -160,6 +180,103 @@
       return response.json();
     }
 
+    const perfCounterInfo = {
+      "task-clock": ["Task clock", "CPU time during which the workload was scheduled. Compare CPU utilization with 1.0 for one fully occupied core."],
+      "cpu-clock": ["CPU clock", "Software CPU time consumed by the workload."],
+      "cycles": ["CPU cycles", "Processor clock cycles spent running the workload. Use with instructions to understand CPU efficiency."],
+      "instructions": ["Instructions", "Machine instructions retired by the CPU. Perf may also report instructions per cycle (IPC)."],
+      "branches": ["Branches", "Branch instructions executed by the workload."],
+      "branch-instructions": ["Branches", "Branch instructions executed by the workload."],
+      "branch-misses": ["Branch misses", "Branches the CPU predicted incorrectly. A high miss percentage can waste pipeline work."],
+      "cache-references": ["Cache references", "Last-level cache accesses observed for the workload."],
+      "cache-misses": ["Cache misses", "Last-level cache accesses that missed. A high percentage can indicate poor memory locality."],
+      "context-switches": ["Context switches", "Times the scheduler switched execution to or from this workload."],
+      "cpu-migrations": ["CPU migrations", "Times the scheduler moved the workload between CPU cores."],
+      "page-faults": ["Page faults", "Memory pages mapped on demand. Most are inexpensive minor faults unless data must be read from storage."],
+      "minor-faults": ["Minor page faults", "Page mappings resolved without reading data from storage."],
+      "major-faults": ["Major page faults", "Page mappings that required storage I/O and may cause visible stalls."]
+    };
+
+    function parsePerfStat(text) {
+      if (!text) return [];
+      return text.split("\n").flatMap(line => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) return [];
+        const fields = line.split(",").map(field => field.trim());
+        if (fields.length < 3 || !fields[2]) return [];
+        const event = fields[2];
+        const modifierMatch = event.match(/:([ukh]+)$/i);
+        return [{
+          rawValue: fields[0], unit: fields[1], event,
+          name: event.replace(/:([ukh]+)$/i, ""),
+          modifiers: modifierMatch?.[1].toLowerCase() || "",
+          enabledPercent: Number(fields[4]),
+          metricValue: fields[5], metricUnit: fields.slice(6).join(", ")
+        }];
+      });
+    }
+
+    function perfScope(modifiers) {
+      const scopes = [];
+      if (modifiers.includes("u")) scopes.push("user");
+      if (modifiers.includes("k")) scopes.push("kernel");
+      if (modifiers.includes("h")) scopes.push("hypervisor");
+      return scopes.join(" + ") || "all";
+    }
+
+    function formatPerfValue(rawValue, unit) {
+      if (!rawValue || rawValue.startsWith("<")) return rawValue || "Unavailable";
+      const value = Number(rawValue.replaceAll(" ", ""));
+      if (!Number.isFinite(value)) return rawValue;
+      if (unit === "msec" && value >= 1000) return `${(value / 1000).toFixed(3)} s`;
+      if (unit) return `${value.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${unit}`;
+      return new Intl.NumberFormat(undefined, { notation: Math.abs(value) >= 100000 ? "compact" : "standard", maximumFractionDigits: 2 }).format(value);
+    }
+
+    function formatPerfMetric(valueText, unit) {
+      const value = Number(valueText);
+      if (!Number.isFinite(value) || !unit) return "";
+      const formatted = value.toLocaleString(undefined, { maximumFractionDigits: 3 });
+      return unit === "/sec" ? `${formatted} per second` : `${formatted} ${unit}`;
+    }
+
+    function renderPerf(text) {
+      perfOutput.textContent = text || "No perf-stat artifact.";
+      perfRaw.hidden = !text;
+      perfRaw.open = false;
+      const counters = parsePerfStat(text);
+      perfCounters.replaceChildren();
+      perfCount.textContent = counters.length ? `${counters.length} collected` : "";
+      if (!counters.length) {
+        perfSummary.textContent = "No perf counter artifact is available for this run.";
+        const empty = document.createElement("div"); empty.className = "empty"; empty.textContent = "No counters recorded."; perfCounters.append(empty);
+        return;
+      }
+
+      const insights = [`${counters.length} counters collected`];
+      const taskClock = counters.find(counter => counter.name === "task-clock");
+      const utilization = Number(taskClock?.metricValue);
+      if (Number.isFinite(utilization) && taskClock.metricUnit.includes("CPUs utilized")) insights.push(`${utilization.toFixed(2)} CPU cores utilized on average`);
+      const instructions = counters.find(counter => counter.name === "instructions");
+      const ipc = Number(instructions?.metricValue);
+      if (Number.isFinite(ipc) && instructions.metricUnit.includes("insn per cycle")) insights.push(`${ipc.toFixed(2)} instructions per cycle`);
+      perfSummary.textContent = `${insights.join(" · ")}. Values are workload totals; rates and ratios are calculated by perf.`;
+
+      for (const counter of counters) {
+        const unavailable = !counter.rawValue || counter.rawValue.startsWith("<");
+        const [label, description] = perfCounterInfo[counter.name] || [counter.name, "A Linux perf event selected for this experiment."];
+        const article = document.createElement("article"); article.className = `perf-counter${unavailable ? " unavailable" : ""}`;
+        const heading = document.createElement("div"); heading.className = "perf-counter-head";
+        const name = document.createElement("span"); name.className = "perf-counter-name"; name.textContent = label;
+        const scope = document.createElement("span"); scope.className = "perf-scope"; scope.textContent = perfScope(counter.modifiers); scope.title = "Execution privilege levels included in this counter";
+        heading.append(name, scope);
+        const value = document.createElement("strong"); value.className = "perf-counter-value"; value.textContent = formatPerfValue(counter.rawValue, counter.unit); value.title = counter.unit ? `${counter.rawValue} ${counter.unit}` : counter.rawValue;
+        const derived = document.createElement("div"); derived.className = "perf-derived"; derived.textContent = formatPerfMetric(counter.metricValue, counter.metricUnit) || (Number.isFinite(counter.enabledPercent) && counter.enabledPercent < 100 ? `${counter.enabledPercent.toFixed(1)}% time enabled` : "");
+        const explanation = document.createElement("p"); explanation.className = "perf-description"; explanation.textContent = description;
+        article.append(heading, value, derived, explanation); perfCounters.append(article);
+      }
+    }
+
     function renderFlame(folded) {
       flame.replaceChildren();
       if (!folded) { flame.setAttribute("viewBox", "0 0 900 120"); return; }
@@ -214,7 +331,7 @@
         fact("Started", new Date(run.started_at_ms).toLocaleString()); fact("Finished", run.finished_at_ms ? new Date(run.finished_at_ms).toLocaleString() : "running");
         fact("Elapsed", run.elapsed_ns == null ? "running" : `${(run.elapsed_ns / 1e9).toFixed(3)} s`); fact("Perf events", run.capture.perf_events.join(", "));
         fact("Perf version", run.perf_version || "not reported"); if (run.failure_reason) fact("Failure", run.failure_reason);
-        perfOutput.textContent = perfArtifact?.text || "No perf-stat artifact."; heapOutput.textContent = heapArtifact?.text || "No Go heap profile artifact."; renderFlame(flameArtifact?.text || "");
+        renderPerf(perfArtifact?.text || ""); heapOutput.textContent = heapArtifact?.text || "No Go heap profile artifact."; renderFlame(flameArtifact?.text || "");
         const timeline = samples.map(sample => ({ ...sample, ts: sample.sampled_at_ms / 1000 }));
         const processMetrics = [["cpu_percent", "Process CPU", "%"], ["rss_bytes", "Resident memory", "B"], ["heap_data_bytes", "Data/heap mapping", "B"], ["read_bps", "Process reads", "B/s"], ["write_bps", "Process writes", "B/s"], ["thread_count", "Threads", "count"], ["minor_faults", "Minor page faults", "count"], ["major_faults", "Major page faults", "count"]];
         processCharts.innerHTML = timeline.length ? processMetrics.map(metric => chart(metric, timeline)).join("") : '<div class="empty">The process exited before a sample was captured.</div>';
