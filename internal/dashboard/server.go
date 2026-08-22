@@ -22,9 +22,27 @@ const maximumProcessSampleLimit = 10000
 //go:embed web/index.html
 var indexHTML []byte
 
+//go:embed web/styles.css
+var stylesCSS []byte
+
+//go:embed web/perf.js
+var perfJS []byte
+
+//go:embed web/app.js
+var appJS []byte
+
 // NewHandler returns the HTTP dashboard and its measurement API.
 func NewHandler(database *store.DB) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /assets/styles.css", func(writer http.ResponseWriter, _ *http.Request) {
+		writeAsset(writer, "text/css; charset=utf-8", stylesCSS)
+	})
+	mux.HandleFunc("GET /assets/perf.js", func(writer http.ResponseWriter, _ *http.Request) {
+		writeAsset(writer, "text/javascript; charset=utf-8", perfJS)
+	})
+	mux.HandleFunc("GET /assets/app.js", func(writer http.ResponseWriter, _ *http.Request) {
+		writeAsset(writer, "text/javascript; charset=utf-8", appJS)
+	})
 	mux.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/" {
 			http.NotFound(writer, request)
@@ -108,6 +126,13 @@ func NewHandler(database *store.DB) http.Handler {
 	})
 
 	return mux
+}
+
+func writeAsset(writer http.ResponseWriter, contentType string, content []byte) {
+	writer.Header().Set("Content-Type", contentType)
+	writer.Header().Set("Cache-Control", "no-cache")
+	writer.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = writer.Write(content)
 }
 
 func boundedLimit(request *http.Request, defaultLimit, maximum int) (int, error) {

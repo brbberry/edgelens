@@ -6,12 +6,48 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/brbberry/edgelens/internal/store"
 	"github.com/brbberry/edgelens/internal/wire"
 )
+
+func TestDashboardAssets(t *testing.T) {
+	database, err := store.Open(filepath.Join(t.TempDir(), "measurements.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	handler := NewHandler(database)
+
+	for _, test := range []struct {
+		path        string
+		contentType string
+		contains    []string
+	}{
+		{"/", "text/html; charset=utf-8", []string{`/assets/styles.css`, `/assets/perf.js`, `/assets/app.js`}},
+		{"/assets/styles.css", "text/css; charset=utf-8", []string{`.perf-counter`}},
+		{"/assets/perf.js", "text/javascript; charset=utf-8", []string{`globalThis.EdgeLensPerf`}},
+		{"/assets/app.js", "text/javascript; charset=utf-8", []string{`function renderPerf`}},
+	} {
+		request := httptest.NewRequest(http.MethodGet, test.path, nil)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, want %d", test.path, response.Code, http.StatusOK)
+		}
+		if got := response.Header().Get("Content-Type"); got != test.contentType {
+			t.Fatalf("%s Content-Type = %q, want %q", test.path, got, test.contentType)
+		}
+		for _, expected := range test.contains {
+			if !strings.Contains(response.Body.String(), expected) {
+				t.Fatalf("%s body does not contain %q", test.path, expected)
+			}
+		}
+	}
+}
 
 func TestMeasurementsAPI(t *testing.T) {
 	database, err := store.Open(filepath.Join(t.TempDir(), "measurements.db"))

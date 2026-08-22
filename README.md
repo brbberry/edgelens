@@ -333,7 +333,7 @@ Cross-host timestamps are not corrected by EdgeLens. Use NTP/PTP appropriate to 
 
 ## What the dashboard looks like
 
-The dashboard is an embedded single-page interface served by the dashboard binary. No separate frontend build is required.
+The dashboard is an embedded single-page interface served by the dashboard binary. Its HTML, CSS, and JavaScript are separate source files embedded by Go, so no separate frontend build is required.
 
 ### Header and navigation
 
@@ -723,9 +723,13 @@ Invalid limits and paths return `400`; absent runs/artifacts return `404`; datab
 
 | File | Responsibility |
 |---|---|
-| [`internal/dashboard/server.go`](internal/dashboard/server.go) | Serves embedded HTML and implements bounded read-only measurement/run/sample/artifact APIs. |
-| [`internal/dashboard/server_test.go`](internal/dashboard/server_test.go) | Tests legacy measurement behavior, experiment response shapes, missing records, and limit validation. |
-| [`internal/dashboard/web/index.html`](internal/dashboard/web/index.html) | Complete embedded UI: tabs, host selector, line charts, run selector, metadata, evidence text, flame rendering, and process timeline. |
+| [`internal/dashboard/server.go`](internal/dashboard/server.go) | Serves embedded HTML/CSS/JavaScript assets and implements bounded read-only measurement/run/sample/artifact APIs. |
+| [`internal/dashboard/server_test.go`](internal/dashboard/server_test.go) | Tests embedded asset routes and MIME types, legacy measurement behavior, experiment response shapes, missing records, and limit validation. |
+| [`internal/dashboard/web/index.html`](internal/dashboard/web/index.html) | Semantic dashboard shell with host/run controls, evidence regions, and ordered embedded asset references. |
+| [`internal/dashboard/web/styles.css`](internal/dashboard/web/styles.css) | Responsive visual system for telemetry charts, run facts, perf evidence, warnings, flame charts, and mobile layouts. |
+| [`internal/dashboard/web/app.js`](internal/dashboard/web/app.js) | Loads dashboard APIs and renders host charts, run metadata, perf evidence, folded stacks, heap summaries, and process timelines. |
+| [`internal/dashboard/web/perf.js`](internal/dashboard/web/perf.js) | Pure perf CSV parsing, scope interpretation, counter metadata, and human-readable value/rate formatting. |
+| [`internal/dashboard/web/perf.test.js`](internal/dashboard/web/perf.test.js) | Node tests for representative Pi perf CSV, task-clock units, derived metrics, and execution scopes. |
 
 ### Experiment domain and orchestration
 
@@ -820,6 +824,12 @@ go test ./internal/procmetrics
 go test ./internal/transport/codec
 go test ./internal/store
 go test ./internal/dashboard
+```
+
+When Node.js is available, run the pure dashboard perf-formatting tests directly:
+
+```bash
+node --test internal/dashboard/web/perf.test.js
 ```
 
 The race detector is also valuable on supported Linux architectures:
