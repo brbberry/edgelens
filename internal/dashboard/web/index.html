@@ -28,7 +28,27 @@
     .trend { fill: none; stroke: var(--teal); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
     .axis-label { fill: var(--muted); font-family: ui-monospace, "SFMono-Regular", monospace; font-size: 10px; }
     .empty { grid-column: 1 / -1; padding: 52px 18px; border: 1px dashed var(--line); color: var(--muted); text-align: center; }
+    .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--line); }
+    .tab { border: 0; border-bottom: 3px solid transparent; padding: 10px 14px; color: var(--muted); background: transparent; font: inherit; font-weight: 650; cursor: pointer; }
+    .tab.active { color: var(--ink); border-bottom-color: var(--orange); }
+    .view[hidden] { display: none; }
+    .run-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .run-toolbar select { flex: 1; max-width: 620px; }
+    .run-detail { display: grid; grid-template-columns: minmax(240px, 340px) 1fr; gap: 24px; margin-bottom: 24px; }
+    .facts { margin: 0; display: grid; grid-template-columns: auto 1fr; align-content: start; gap: 8px 14px; }
+    .facts dt { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-family: ui-monospace, "SFMono-Regular", monospace; font-size: 13px; }
+    .evidence { min-width: 0; }
+    .evidence h2, .timeline h2 { margin-bottom: 10px; }
+    pre { max-height: 300px; margin: 0 0 18px; overflow: auto; border: 1px solid var(--line); border-radius: 5px; padding: 12px; background: #152126; color: #e9f1ec; font: 12px/1.5 ui-monospace, "SFMono-Regular", monospace; white-space: pre-wrap; }
+    #flame { width: 100%; min-height: 120px; height: auto; margin: 0 0 18px; border: 1px solid var(--line); background: var(--panel); }
+    .flame-label { fill: #17242b; font: 10px ui-monospace, "SFMono-Regular", monospace; pointer-events: none; }
+    .section-title { margin: 26px 0 12px; font-size: 18px; }
+    .badge { display: inline-block; border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; font-family: inherit; font-size: 11px; font-weight: 700; }
+    .badge.completed { color: #11623b; border-color: #85bda0; }
+    .badge.failed, .badge.interrupted { color: #9c321e; border-color: #dba08f; }
     @media (max-width: 600px) { header { align-items: start; flex-direction: column; padding-top: 26px; } h1 { font-size: 29px; } .controls { width: 100%; justify-content: space-between; } }
+    @media (max-width: 800px) { .run-detail { grid-template-columns: 1fr; } .run-toolbar { align-items: stretch; flex-direction: column; } }
   </style>
 </head>
 <body>
@@ -36,7 +56,18 @@
     <div><h1>EdgeLens</h1><p class="subtitle">System telemetry, read directly from collector storage.</p></div>
     <div class="controls"><label for="host">Host</label><select id="host" aria-label="Select host"></select></div>
   </header>
-  <main><p id="status" class="status">Loading measurements...</p><section id="charts" class="grid" aria-live="polite"></section></main>
+  <main>
+    <nav class="tabs" aria-label="Dashboard views"><button class="tab active" data-view="host-view">Host telemetry</button><button class="tab" data-view="run-view">Experiments</button></nav>
+    <section id="host-view" class="view"><p id="status" class="status">Loading measurements...</p><section id="charts" class="grid" aria-live="polite"></section></section>
+    <section id="run-view" class="view" hidden>
+      <div class="run-toolbar"><label for="run-select">Experiment run</label><select id="run-select" aria-label="Select experiment run"></select></div>
+      <p id="run-status" class="status">Loading experiments...</p>
+      <div id="run-content" hidden>
+        <section class="run-detail"><dl id="run-facts" class="facts"></dl><div class="evidence"><h2>Perf counters</h2><pre id="perf-output">No perf-stat artifact.</pre><h2>Sampled stacks</h2><svg id="flame" role="img" aria-label="CPU flame chart"></svg><h2>Go heap profile summary</h2><pre id="heap-output">No heap profile artifact.</pre></div></section>
+        <section class="timeline"><h2 class="section-title">Process timeline</h2><div id="process-charts" class="grid"></div></section>
+      </div>
+    </section>
+  </main>
   <script>
     const metrics = [
       ["cpu_pct", "CPU usage", "%"], ["mem_used_pct", "Memory usage", "%"], ["mem_used_b", "Memory used", "B"],
@@ -47,7 +78,16 @@
     const hostSelect = document.querySelector("#host");
     const chartGrid = document.querySelector("#charts");
     const status = document.querySelector("#status");
+    const runSelect = document.querySelector("#run-select");
+    const runStatus = document.querySelector("#run-status");
+    const runContent = document.querySelector("#run-content");
+    const runFacts = document.querySelector("#run-facts");
+    const processCharts = document.querySelector("#process-charts");
+    const perfOutput = document.querySelector("#perf-output");
+    const heapOutput = document.querySelector("#heap-output");
+    const flame = document.querySelector("#flame");
     let measurements = [];
+    let runs = [];
 
     function format(value, unit) {
       if (unit === "B" || unit === "B/s") {
@@ -56,6 +96,7 @@
         while (Math.abs(value) >= 1024 && index < units.length - 1) { value /= 1024; index++; }
         return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[index]}${unit === "B/s" ? "/s" : ""}`;
       }
+	  if (unit === "count") return Math.round(value).toLocaleString();
       return `${value.toFixed(1)}${unit === "%" ? "%" : " C"}`;
     }
 
@@ -104,17 +145,100 @@
       }));
     }
 
+    function fact(label, value) {
+      const term = document.createElement("dt"); term.textContent = label;
+      const detail = document.createElement("dd");
+      if (label === "Status") { const badge = document.createElement("span"); badge.className = `badge ${value}`; badge.textContent = value; detail.append(badge); }
+      else detail.textContent = value;
+      runFacts.append(term, detail);
+    }
+
+    async function optionalArtifact(runID, kind) {
+      const response = await fetch(`/api/runs/${encodeURIComponent(runID)}/artifacts/${kind}`);
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error(`Unable to load ${kind} artifact`);
+      return response.json();
+    }
+
+    function renderFlame(folded) {
+      flame.replaceChildren();
+      if (!folded) { flame.setAttribute("viewBox", "0 0 900 120"); return; }
+      const root = { name: "all samples", count: 0, children: new Map() };
+      let maximumDepth = 1;
+      for (const line of folded.trim().split("\n")) {
+        const split = line.lastIndexOf(" ");
+        if (split < 1) continue;
+        const count = Number(line.slice(split + 1));
+        const stack = line.slice(0, split).split(";");
+        if (!Number.isFinite(count) || count <= 0) continue;
+        root.count += count; maximumDepth = Math.max(maximumDepth, stack.length);
+        let node = root;
+        for (const name of stack) {
+          if (!node.children.has(name)) node.children.set(name, { name, count: 0, children: new Map() });
+          node = node.children.get(name); node.count += count;
+        }
+      }
+      const width = 900, rowHeight = 24, height = (maximumDepth + 1) * rowHeight;
+      flame.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      const namespace = "http://www.w3.org/2000/svg";
+      function color(name) { let hash = 0; for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) | 0; return `hsl(${Math.abs(hash) % 330} 58% 68%)`; }
+      function draw(node, x, y, nodeWidth) {
+        const children = [...node.children.values()].sort((a, b) => b.count - a.count);
+        let offset = x;
+        for (const child of children) {
+          const childWidth = nodeWidth * child.count / node.count;
+          const rect = document.createElementNS(namespace, "rect");
+          rect.setAttribute("x", offset); rect.setAttribute("y", height - y - rowHeight); rect.setAttribute("width", Math.max(0, childWidth - .5)); rect.setAttribute("height", rowHeight - 1); rect.setAttribute("fill", color(child.name));
+          const title = document.createElementNS(namespace, "title"); title.textContent = `${child.name}: ${child.count} samples`; rect.append(title); flame.append(rect);
+          if (childWidth > 72) { const text = document.createElementNS(namespace, "text"); text.setAttribute("x", offset + 4); text.setAttribute("y", height - y - 8); text.setAttribute("class", "flame-label"); text.textContent = child.name.slice(0, Math.floor(childWidth / 7)); flame.append(text); }
+          draw(child, offset, y + rowHeight, childWidth); offset += childWidth;
+        }
+      }
+      if (root.count) draw(root, 0, 0, width);
+    }
+
+    async function renderRun() {
+      const id = runSelect.value;
+      if (!id) { runContent.hidden = true; runStatus.textContent = "No experiment runs recorded."; return; }
+      runStatus.textContent = "Loading experiment evidence...";
+      try {
+        const [runResponse, sampleResponse, perfArtifact, flameArtifact, heapArtifact] = await Promise.all([
+          fetch(`/api/runs/${encodeURIComponent(id)}`),
+          fetch(`/api/runs/${encodeURIComponent(id)}/process-samples?limit=10000`),
+          optionalArtifact(id, "perf-stat"), optionalArtifact(id, "flame-folded"), optionalArtifact(id, "heap-summary")
+        ]);
+        if (!runResponse.ok || !sampleResponse.ok) throw new Error("Unable to load experiment details");
+        const run = await runResponse.json(); const samples = await sampleResponse.json();
+        runFacts.replaceChildren();
+        fact("Status", run.status); fact("Command", [run.command, ...run.args].join(" ")); fact("Host / PID", `${run.host} / ${run.child_pid}`);
+        fact("Started", new Date(run.started_at_ms).toLocaleString()); fact("Finished", run.finished_at_ms ? new Date(run.finished_at_ms).toLocaleString() : "running");
+        fact("Elapsed", run.elapsed_ns == null ? "running" : `${(run.elapsed_ns / 1e9).toFixed(3)} s`); fact("Perf events", run.capture.perf_events.join(", "));
+        fact("Perf version", run.perf_version || "not reported"); if (run.failure_reason) fact("Failure", run.failure_reason);
+        perfOutput.textContent = perfArtifact?.text || "No perf-stat artifact."; heapOutput.textContent = heapArtifact?.text || "No Go heap profile artifact."; renderFlame(flameArtifact?.text || "");
+        const timeline = samples.map(sample => ({ ...sample, ts: sample.sampled_at_ms / 1000 }));
+        const processMetrics = [["cpu_percent", "Process CPU", "%"], ["rss_bytes", "Resident memory", "B"], ["heap_data_bytes", "Data/heap mapping", "B"], ["read_bps", "Process reads", "B/s"], ["write_bps", "Process writes", "B/s"], ["thread_count", "Threads", "count"], ["minor_faults", "Minor page faults", "count"], ["major_faults", "Major page faults", "count"]];
+        processCharts.innerHTML = timeline.length ? processMetrics.map(metric => chart(metric, timeline)).join("") : '<div class="empty">The process exited before a sample was captured.</div>';
+        runStatus.textContent = `${samples.length} process samples. Artifacts are checksum-verified by the collector.`; runContent.hidden = false;
+      } catch (error) { runStatus.textContent = error.message; runContent.hidden = true; }
+    }
+
     async function load() {
       try {
-        const response = await fetch("/api/measurements?limit=720");
-        if (!response.ok) throw new Error("Unable to load measurements");
-        measurements = await response.json();
+        const [measurementResponse, runResponse] = await Promise.all([fetch("/api/measurements?limit=720"), fetch("/api/runs?limit=500")]);
+        if (!measurementResponse.ok || !runResponse.ok) throw new Error("Unable to load dashboard data");
+        measurements = await measurementResponse.json(); runs = await runResponse.json();
         const hosts = [...new Set(measurements.map(record => record.host))];
         populateHosts(hosts);
         hostSelect.addEventListener("change", render);
         render();
+        runSelect.replaceChildren(...runs.map(run => { const option = document.createElement("option"); option.value = run.id; option.textContent = `${new Date(run.started_at_ms).toLocaleString()} · ${run.command} · ${run.status}`; return option; }));
+        runSelect.addEventListener("change", renderRun); renderRun();
       } catch (error) { status.textContent = error.message; chartGrid.innerHTML = '<div class="empty">The dashboard could not load telemetry.</div>'; }
     }
+    document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach(item => item.classList.toggle("active", item === tab));
+      document.querySelectorAll(".view").forEach(view => view.hidden = view.id !== tab.dataset.view);
+    }));
     load();
   </script>
 </body>

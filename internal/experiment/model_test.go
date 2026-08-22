@@ -6,89 +6,6 @@ import (
 	"time"
 )
 
-func TestRunStatusIsTerminal(t *testing.T) {
-	tests := []struct {
-		name   string
-		status RunStatus
-		want   bool
-	}{
-		{
-			name:   "running is not terminal",
-			status: RunStatusRunning,
-			want:   false,
-		},
-		{
-			name:   "failed is terminal",
-			status: RunStatusFailed,
-			want:   true,
-		},
-		{
-			name:   "interrupted is terminal",
-			status: RunStatusInterrupted,
-			want:   true,
-		},
-		{
-			name:   "completed is terminal",
-			status: RunStatusCompleted,
-			want:   true,
-		},
-		{
-			name:   "unknown is not terminal",
-			status: RunStatus(999),
-			want:   false,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := test.status.IsTerminal(); got != test.want {
-				t.Fatalf("IsTerminal() = %t, want %t", got, test.want)
-			}
-		})
-	}
-}
-
-func TestRunStatusString(t *testing.T) {
-	tests := []struct {
-		name   string
-		status RunStatus
-		want   string
-	}{
-		{
-			name:   "running",
-			status: RunStatusRunning,
-			want:   "running",
-		},
-		{
-			name:   "failed",
-			status: RunStatusFailed,
-			want:   "failed",
-		},
-		{
-			name:   "interrupted",
-			status: RunStatusInterrupted,
-			want:   "interrupted",
-		},
-		{
-			name:   "completed",
-			status: RunStatusCompleted,
-			want:   "completed",
-		},
-		{
-			name:   "unknown value",
-			status: RunStatus(999),
-			want:   "unknown",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := test.status.String(); got != test.want {
-				t.Fatalf("String() = %q, want %q", got, test.want)
-			}
-		})
-	}
-}
 func TestNewRunningRun(t *testing.T) {
 	startedAt := time.Date(
 		2026, time.August, 22, 12, 30, 0, 0,
@@ -111,26 +28,17 @@ func TestNewRunningRun(t *testing.T) {
 	if run.ID != "run-123" || run.Host != "compute-01" {
 		t.Fatalf("unexpected identity: ID=%q Host=%q", run.ID, run.Host)
 	}
-	if run.Status != RunStatusRunning {
-		t.Fatalf("Status = %v, want running", run.Status)
-	}
 	if !run.StartTime.Equal(startedAt) {
 		t.Fatalf("StartTime = %v, want instant %v", run.StartTime, startedAt)
 	}
 	if run.StartTime.Location() != time.UTC {
 		t.Fatalf("StartTime location = %v, want UTC", run.StartTime.Location())
 	}
-	if run.ChildPID == nil || *run.ChildPID != 4321 {
+	if run.ChildPID != 4321 {
 		t.Fatalf("ChildPID = %v, want 4321", run.ChildPID)
 	}
 	if !slices.Equal(run.Args, args) {
 		t.Fatalf("Args = %q, want %q", run.Args, args)
-	}
-	if run.FinishTime != nil || run.Elapsed != nil || run.ExitCode != nil {
-		t.Fatal("new running run contains terminal process information")
-	}
-	if run.Signal != "" || run.FailureReason != "" {
-		t.Fatal("new running run contains a terminal reason")
 	}
 }
 

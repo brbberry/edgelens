@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/brbberry/edgelens/internal/dashboard"
 	"github.com/brbberry/edgelens/internal/store"
@@ -20,7 +21,11 @@ func main() {
 	}
 	defer database.Close()
 
-	log.Printf("dashboard listening on http://localhost%s", *address)
+	displayAddress := *address
+	if strings.HasPrefix(displayAddress, ":") {
+		displayAddress = "localhost" + displayAddress
+	}
+	log.Printf("dashboard listening on http://%s", displayAddress)
 	if err := http.ListenAndServe(*address, dashboard.NewHandler(database)); err != nil {
 		log.Fatalf("serve dashboard: %v", err)
 	}

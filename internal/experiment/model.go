@@ -7,52 +7,6 @@ import (
 	"time"
 )
 
-type RunStatus int
-
-const (
-	RunStatusUnknown     RunStatus = 0
-	RunStatusRunning     RunStatus = 1
-	RunStatusFailed      RunStatus = 2
-	RunStatusInterrupted RunStatus = 3
-	RunStatusCompleted   RunStatus = 4
-)
-
-func (status RunStatus) String() string {
-	switch status {
-	case RunStatusRunning:
-		return "running"
-	case RunStatusFailed:
-		return "failed"
-	case RunStatusInterrupted:
-		return "interrupted"
-	case RunStatusCompleted:
-		return "completed"
-	default:
-		return "unknown"
-	}
-}
-
-func (status RunStatus) IsValid() bool {
-	switch status {
-	case RunStatusRunning,
-		RunStatusFailed,
-		RunStatusInterrupted,
-		RunStatusCompleted:
-		return true
-	default:
-		return false
-	}
-}
-
-func (status RunStatus) IsTerminal() bool {
-	switch status {
-	case RunStatusFailed, RunStatusInterrupted, RunStatusCompleted:
-		return true
-	default:
-		return false
-	}
-}
-
 type CaptureSpec struct {
 	PerfEvents []string
 	ByteLimit  int64
@@ -60,19 +14,13 @@ type CaptureSpec struct {
 
 // Run records the durable facts associated with one experiment.
 type Run struct {
-	ID            string
-	Host          string
-	Command       string
-	Args          []string
-	Status        RunStatus
-	StartTime     time.Time
-	FinishTime    *time.Time
-	Elapsed       *time.Duration
-	ChildPID      *int
-	ExitCode      *int
-	Signal        string
-	CaptureSpec   CaptureSpec
-	FailureReason string
+	ID          string
+	Host        string
+	Command     string
+	Args        []string
+	StartTime   time.Time
+	ChildPID    int
+	CaptureSpec CaptureSpec
 }
 
 // NewRunningRun constructs the durable record for a child that has already
@@ -124,9 +72,8 @@ func NewRunningRun(
 		Host:      host,
 		Command:   command,
 		Args:      slices.Clone(args),
-		Status:    RunStatusRunning,
 		StartTime: startedAt.UTC(),
-		ChildPID:  &childPID,
+		ChildPID:  childPID,
 		CaptureSpec: CaptureSpec{
 			PerfEvents: slices.Clone(captureSpec.PerfEvents),
 			ByteLimit:  captureSpec.ByteLimit,

@@ -11,16 +11,14 @@ import (
 
 // CPUStats holds the raw jiffie counters parsed from the first line of /proc/stat.
 type CPUStats struct {
-	User      uint64
-	Nice      uint64
-	System    uint64
-	Idle      uint64
-	IOWait    uint64
-	IRQ       uint64
-	SoftIRQ   uint64
-	Steal     uint64
-	Guest     uint64
-	GuestNice uint64
+	User    uint64
+	Nice    uint64
+	System  uint64
+	Idle    uint64
+	IOWait  uint64
+	IRQ     uint64
+	SoftIRQ uint64
+	Steal   uint64
 }
 
 type CPUMeasurement struct {
@@ -64,7 +62,7 @@ func ReadCPUStats() (CPUStats, error) {
 		}
 
 		stats := CPUStats{}
-		// Older kernels may omit trailing fields (guest, guest_nice), so guard each index.
+		// Older kernels may omit trailing fields, so guard each index.
 		set := func(i int, dst *uint64) {
 			if i < len(values) {
 				*dst = values[i]
@@ -78,8 +76,6 @@ func ReadCPUStats() (CPUStats, error) {
 		set(5, &stats.IRQ)
 		set(6, &stats.SoftIRQ)
 		set(7, &stats.Steal)
-		set(8, &stats.Guest)
-		set(9, &stats.GuestNice)
 
 		return stats, nil
 	}

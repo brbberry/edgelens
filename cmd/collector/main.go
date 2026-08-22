@@ -8,6 +8,7 @@ import (
 	"github.com/brbberry/edgelens/internal/store"
 	"github.com/brbberry/edgelens/internal/transport"
 	"github.com/brbberry/edgelens/internal/transport/codec"
+	"github.com/brbberry/edgelens/internal/wire"
 )
 
 func main() {
@@ -39,27 +40,31 @@ func main() {
 			continue
 		}
 
-		fmt.Println("received from:", senderAddress)
-		fmt.Println("raw message:", string(buffer[:bytesRead]))
-
-		measurement, err := decoder.Decode(buffer[:bytesRead])
-
+		packet, err := decoder.DecodePacket(buffer[:bytesRead])
 		if err != nil {
 			fmt.Println("decode error:", err)
 			continue
 		}
 
-		if err := database.WriteMeasurement(context.Background(), measurement); err != nil {
-			fmt.Println("database write error:", err)
+		var writeErr error
+		switch packet.Kind {
+		case wire.PacketMeasurement:
+			writeErr = database.WriteMeasurement(context.Background(), *packet.Measurement)
+		case wire.PacketRunStarted:
+			writeErr = database.CreateRun(context.Background(), *packet.Experiment)
+		case wire.PacketProcessSample:
+			writeErr = database.WriteProcessSample(context.Background(), *packet.Experiment)
+		case wire.PacketRunFinished:
+			writeErr = database.FinalizeRun(context.Background(), *packet.Experiment)
+		case wire.PacketArtifact:
+			writeErr = database.WriteArtifact(context.Background(), *packet.Experiment)
+		default:
+			writeErr = fmt.Errorf("unsupported packet kind %q", packet.Kind)
+		}
+		if writeErr != nil {
+			fmt.Println("database write error:", writeErr)
 			continue
 		}
-
-		fmt.Printf("stored measurement from %s: host=%s timestamp=%d\n",
-			senderAddress,
-			measurement.Host,
-			measurement.Timestamp,
-		)
-
-		fmt.Printf("decoded measurement: %+v\n", measurement)
+		fmt.Printf("stored %s packet from %s\n", packet.Kind, senderAddress)
 	}
 }
